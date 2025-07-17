@@ -88,12 +88,6 @@ CREATE POLICY "Users can update own data"
   USING (auth.uid() = id);
 
 -- Game Sessions: Spielleiter können ihre Sessions verwalten, Spieler können Sessions lesen
-CREATE POLICY "Spielleiter can manage own sessions"
-  ON game_sessions
-  FOR ALL
-  TO authenticated
-  USING (spielleiter_id = auth.uid());
-
 CREATE POLICY "Players can read sessions they joined"
   ON game_sessions
   FOR SELECT
