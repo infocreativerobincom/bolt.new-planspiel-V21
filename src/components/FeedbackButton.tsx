@@ -53,9 +53,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, sessionI
     e.preventDefault();
     e.stopPropagation();
     
-    const rect = overlayRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    
+    const rect = document.body.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
@@ -70,9 +68,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, sessionI
     e.preventDefault();
     e.stopPropagation();
     
-    const rect = overlayRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    
+    const rect = document.body.getBoundingClientRect();
     const currentX = e.clientX - rect.left;
     const currentY = e.clientY - rect.top;
     
@@ -87,7 +83,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, sessionI
   }, [isSelecting, isDrawing, startPoint]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    if (!isSelecting || !isDrawing || !selectedArea) return;
+    if (!isSelecting || !isDrawing) return;
     
     e.preventDefault();
     e.stopPropagation();
@@ -95,7 +91,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, sessionI
     setIsDrawing(false);
     
     // Mindestgröße prüfen
-    if (selectedArea.width < 10 || selectedArea.height < 10) {
+    if (!selectedArea || selectedArea.width < 10 || selectedArea.height < 10) {
       setSelectedArea(null);
       setStartPoint(null);
       return;
@@ -113,9 +109,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, sessionI
     e.preventDefault();
     e.stopPropagation();
     
-    const rect = overlayRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    
+    const rect = document.body.getBoundingClientRect();
     const touch = e.touches[0];
     const x = touch.clientX - rect.left;
     const y = touch.clientY - rect.top;
@@ -131,9 +125,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, sessionI
     e.preventDefault();
     e.stopPropagation();
     
-    const rect = overlayRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    
+    const rect = document.body.getBoundingClientRect();
     const touch = e.touches[0];
     const currentX = touch.clientX - rect.left;
     const currentY = touch.clientY - rect.top;
@@ -149,7 +141,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, sessionI
   }, [isSelecting, isDrawing, startPoint]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (!isSelecting || !isDrawing || !selectedArea) return;
+    if (!isSelecting || !isDrawing) return;
     
     e.preventDefault();
     e.stopPropagation();
@@ -157,7 +149,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, sessionI
     setIsDrawing(false);
     
     // Mindestgröße prüfen
-    if (selectedArea.width < 10 || selectedArea.height < 10) {
+    if (!selectedArea || selectedArea.width < 10 || selectedArea.height < 10) {
       setSelectedArea(null);
       setStartPoint(null);
       return;
@@ -281,7 +273,8 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, sessionI
           className="fixed inset-0 z-40"
           style={{ 
             backgroundColor: 'rgba(0, 0, 0, 0.3)',
-            cursor: isSelecting ? 'crosshair' : 'default'
+            cursor: isSelecting ? 'crosshair' : 'default',
+            touchAction: 'none' // Verhindert Scrollen während Touch-Events
           }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
