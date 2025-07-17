@@ -12,8 +12,8 @@
 */
 
 -- Drop the existing problematic policy
-DROP POLICY IF EXISTS "Users can read own data" ON public.users;
-DROP POLICY IF EXISTS "Users can update own data" ON public.users;
+DROP POLICY IF EXISTS "Users can read their own profile data" ON public.users;
+DROP POLICY IF EXISTS "Users can update their own profile data" ON public.users;
 
 -- Create new RLS policies with correct column references
 CREATE POLICY "Users can read their own profile data" 
