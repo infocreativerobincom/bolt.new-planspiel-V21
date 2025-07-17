@@ -121,9 +121,11 @@ CREATE TABLE IF NOT EXISTS feedback (
   marked_area jsonb NOT NULL,
   feedback_text text NOT NULL,
   created_at timestamptz DEFAULT now(),
-  Zeitpunkt timestamptz COMMENT 'Wann wurde das Feedback gesendet',
+  Zeitpunkt timestamptz,
   player_email text
 );
+
+COMMENT ON COLUMN feedback.Zeitpunkt IS 'Wann wurde das Feedback gesendet';
 
 ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
 
