@@ -32,12 +32,6 @@ TO authenticated
 USING (spielleiter_id = auth.uid())
 WITH CHECK (spielleiter_id = auth.uid());
 
--- All authenticated users can read sessions (needed for joining by invite code)
-CREATE POLICY "Authenticated users can read sessions" 
-ON game_sessions
-FOR SELECT
-TO authenticated
-USING (true);
 
 -- Ensure RLS is enabled
 ALTER TABLE game_sessions ENABLE ROW LEVEL SECURITY;
