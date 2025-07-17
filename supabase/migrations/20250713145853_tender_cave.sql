@@ -34,12 +34,6 @@ CREATE TABLE IF NOT EXISTS user_game_saves (
 ALTER TABLE user_game_saves ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies
-CREATE POLICY "Users can view their own game saves"
-  ON user_game_saves
-  FOR SELECT
-  TO authenticated
-  USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can create their own game saves"
   ON user_game_saves
   FOR INSERT
