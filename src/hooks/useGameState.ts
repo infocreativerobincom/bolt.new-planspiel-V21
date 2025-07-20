@@ -143,24 +143,19 @@ export const useGameState = () => {
         const sessionElapsed = currentTime - timerStartTime;
         const totalElapsed = gameState.timeProgress.totalElapsedTime + sessionElapsed;
         
-        // Timer läuft unabhängig - nur das Datum wird basierend auf Timer-Zeit berechnet
-        const timerDaysElapsed = Math.floor(totalElapsed / (SECONDS_PER_DAY * 1000));
-        
-        // Berechne neues Datum basierend auf Timer, ABER respektiere manuell gesetztes Datum
-        const timerBasedDate = new Date(2025, 0, 1); // Basis: 01.01.2025
-        timerBasedDate.setDate(timerBasedDate.getDate() + timerDaysElapsed);
-        
-        // Verwende das spätere Datum (entweder Timer-basiert oder manuell vorgesetzt)
-        const currentStoredDate = new Date(gameState.timeProgress.currentDate);
-        const finalDate = timerBasedDate > currentStoredDate ? timerBasedDate : currentStoredDate;
-        const currentYear = finalDate.getFullYear();
+        const totalDaysElapsed = Math.floor(totalElapsed / (SECONDS_PER_DAY * 1000));
+        const startDate = new Date(2025, 0, 1); // 01.01.2025
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + totalDaysElapsed);
+        const currentYear = currentDate.getFullYear();
         
         setGameState(prev => ({
           ...prev,
           currentYear: Math.min(2037, currentYear),
           timeProgress: {
             ...prev.timeProgress,
-            currentDate: finalDate
+            daysElapsed: totalDaysElapsed,
+            currentDate: currentDate
           }
         }));
       }, 1000);
@@ -442,8 +437,12 @@ export const useGameState = () => {
       newBudget.availableBudgetCurrentPeriod = ANNUAL_BUDGET;
       newBudget.totalSpentCurrentPeriod = 0;
       
-      // WICHTIG: Timer wird NIEMALS verändert! Nur das Datum wird vorgesetzt.
+      // Berechne Tage bis zum 01.01. des nächsten Jahres
+      const currentDate = new Date(prev.timeProgress.currentDate);
       const nextYearStart = new Date(newYear, 0, 1);
+      const daysToAdd = Math.ceil((nextYearStart.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
+      const newTotalElapsedTime = prev.timeProgress.totalElapsedTime + timeToAdd;
       
       return {
         ...prev,
@@ -451,12 +450,21 @@ export const useGameState = () => {
         budget: newBudget,
         timeProgress: {
           ...prev.timeProgress,
-          currentDate: nextYearStart
-          // Timer-Werte bleiben UNVERÄNDERT!
+          currentDate: new Date(newYear, 0, 1),
+          daysElapsed: prev.timeProgress.daysElapsed + daysToAdd,
+          totalElapsedTime: newTotalElapsedTime
         }
       };
     });
-    // Timer wird NIEMALS angepasst - er läuft unabhängig weiter!
+    
+    // Timer-Startzeit entsprechend anpassen
+    if (timerStartTime) {
+      const currentDate = new Date(gameState.timeProgress.currentDate);
+      const nextYearStart = new Date(gameState.currentYear + 1, 0, 1);
+      const daysToAdd = Math.ceil((nextYearStart.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
+      setTimerStartTime(Date.now() - timeToAdd);
+    }
   }, [gameState.timeProgress.currentDate, gameState.currentYear, timerStartTime]);
 
   const advanceToEndOfLegislature = useCallback(() => {
@@ -471,8 +479,12 @@ export const useGameState = () => {
         newBudget.totalSpentCurrentPeriod = 0;
       }
       
-      // WICHTIG: Timer wird NIEMALS verändert! Nur das Datum wird vorgesetzt.
+      // Berechne Tage bis zum 01.01. des Legislaturendes
+      const currentDate = new Date(prev.timeProgress.currentDate);
       const legislatureEndDate = new Date(newYear, 0, 1);
+      const daysToAdd = Math.ceil((legislatureEndDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
+      const newTotalElapsedTime = prev.timeProgress.totalElapsedTime + timeToAdd;
       
       return {
         ...prev,
@@ -480,12 +492,23 @@ export const useGameState = () => {
         budget: newBudget,
         timeProgress: {
           ...prev.timeProgress,
-          currentDate: legislatureEndDate
-          // Timer-Werte bleiben UNVERÄNDERT!
+          currentDate: new Date(newYear, 0, 1),
+          daysElapsed: prev.timeProgress.daysElapsed + daysToAdd,
+          totalElapsedTime: newTotalElapsedTime
         }
       };
     });
-    // Timer wird NIEMALS angepasst - er läuft unabhängig weiter!
+    
+    // Timer-Startzeit entsprechend anpassen
+    if (timerStartTime) {
+      const currentLegislatureEnd = Math.ceil((gameState.currentYear - 2025 + 1) / 4) * 4 + 2025;
+      const newYear = Math.min(2037, currentLegislatureEnd);
+      const currentDate = new Date(gameState.timeProgress.currentDate);
+      const legislatureEndDate = new Date(newYear, 0, 1);
+      const daysToAdd = Math.ceil((legislatureEndDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
+      setTimerStartTime(Date.now() - timeToAdd);
+    }
   }, [gameState.currentYear, gameState.timeProgress.currentDate, timerStartTime]);
 
   const applyDecision = useCallback((decision: Decision, selectedOptions: DecisionOption[]) => {
