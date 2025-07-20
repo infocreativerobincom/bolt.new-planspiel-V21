@@ -1,4 +1,6 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,237 +8,266 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
+interface FeedbackEmailRequest {
+  feedbackId: string
+  userEmail: string
+  userName: string
+  feedbackText: string
+  pageUrl: string
+  sessionId?: string
+  markedArea?: any
+}
+
+// SMTP-Konfiguration für Resend
+const createSMTPClient = () => {
+  const smtpHost = 'smtp.resend.com'
+  const smtpPort = 587
+  const smtpUsername = 'resend'
+  const smtpPassword = Deno.env.get('RESEND_API_KEY')
+
+  if (!smtpPassword) {
+    throw new Error('RESEND_API_KEY nicht konfiguriert')
+  }
+
+  return new SMTPClient({
+    connection: {
+      hostname: smtpHost,
+      port: smtpPort,
+      tls: true,
+      auth: {
+        username: smtpUsername,
+        password: smtpPassword,
+      },
+    },
+  })
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    console.log('Feedback email function called');
-    console.log('Request method:', req.method);
-    console.log('Request headers:', Object.fromEntries(req.headers.entries()));
-    
-    const { user_id, session_id, page_url, screenshot_data, marked_area, feedback_text, player_email } = await req.json()
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    // Feedback immer loggen
-    console.log('Feedback erhalten:', {
-      user_id,
-      session_id,
-      page_url,
-      feedback_text,
-      marked_area,
-      screenshot_size: screenshot_data ? screenshot_data.length : 0,
-      player_email
-    })
+    const { 
+      feedbackId, 
+      userEmail, 
+      userName, 
+      feedbackText, 
+      pageUrl, 
+      sessionId,
+      markedArea 
+    }: FeedbackEmailRequest = await req.json()
 
-    // Validierung der erforderlichen Felder
-    if (!user_id || !feedback_text || !marked_area) {
-      console.error('Missing required fields:', { user_id: !!user_id, feedback_text: !!feedback_text, marked_area: !!marked_area });
+    console.log('Sending feedback email via SMTP for:', feedbackId)
+
+    // Validierung
+    if (!feedbackId || !userEmail || !userName || !feedbackText || !pageUrl) {
       return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Fehlende erforderliche Felder',
-          details: 'user_id, feedback_text und marked_area sind erforderlich'
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        },
+        JSON.stringify({ error: 'Fehlende erforderliche Felder' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
       )
     }
 
-    // E-Mail-Inhalt erstellen
-    const emailContent = `
-Neues Feedback vom Politischen Planspiel Deutschland erhalten!
+    // Admin E-Mail-Adresse
+    const adminEmail = Deno.env.get('ADMIN_EMAIL') || 'admin@yourdomain.com'
+    
+    const currentDate = new Date().toLocaleString('de-DE', {
+      timeZone: 'Europe/Berlin',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
 
-=== FEEDBACK DETAILS ===
-Benutzer-ID: ${user_id}
-Session-ID: ${session_id || 'Keine Session'}
-Spieler-Email: ${player_email || 'Nicht verfügbar'}
-Seite: ${page_url}
+    try {
+      // SMTP Client erstellen
+      const client = createSMTPClient()
 
+      // E-Mail-Inhalt
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Neues Feedback</title>
+          <style>
+            @media only screen and (max-width: 600px) {
+              .container { width: 100% !important; padding: 10px !important; }
+              .content { padding: 20px !important; }
+            }
+          </style>
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f8fafc;">
+          <div class="container" style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+              <h1 style="color: white; margin: 0; font-size: 24px;">Neues Feedback erhalten</h1>
+              <p style="color: #fecaca; margin: 10px 0 0 0; font-size: 14px;">Politisches Planspiel Deutschland</p>
+            </div>
+            
+            <div class="content" style="background: white; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="color: #333; margin-top: 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">Feedback-Details</h2>
+              
+              <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 8px 0; font-weight: bold; color: #374151; width: 120px;">Feedback-ID:</td>
+                    <td style="padding: 8px 0; color: #6b7280; font-family: 'Courier New', monospace;">${feedbackId}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; font-weight: bold; color: #374151;">Zeitpunkt:</td>
+                    <td style="padding: 8px 0; color: #6b7280;">${currentDate}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; font-weight: bold; color: #374151;">Benutzer:</td>
+                    <td style="padding: 8px 0; color: #6b7280;">${userName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; font-weight: bold; color: #374151;">E-Mail:</td>
+                    <td style="padding: 8px 0; color: #6b7280;">${userEmail}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; font-weight: bold; color: #374151;">Seite:</td>
+                    <td style="padding: 8px 0; color: #6b7280; word-break: break-all;">${pageUrl}</td>
+                  </tr>
+                  ${sessionId ? `
+                  <tr>
+                    <td style="padding: 8px 0; font-weight: bold; color: #374151;">Session-ID:</td>
+                    <td style="padding: 8px 0; color: #6b7280; font-family: 'Courier New', monospace;">${sessionId}</td>
+                  </tr>
+                  ` : ''}
+                </table>
+              </div>
+              
+              <div style="margin-bottom: 20px;">
+                <h3 style="color: #374151; margin-bottom: 10px; font-size: 16px;">Feedback-Text:</h3>
+                <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px;">
+                  <p style="margin: 0; color: #92400e; white-space: pre-wrap;">${feedbackText}</p>
+                </div>
+              </div>
+              
+              ${markedArea ? `
+              <div style="margin-bottom: 20px;">
+                <h3 style="color: #374151; margin-bottom: 10px; font-size: 16px;">Markierter Bereich:</h3>
+                <div style="background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; padding: 15px;">
+                  <p style="margin: 0; color: #6b7280; font-size: 14px;">
+                    Position: x=${markedArea.x || 'N/A'}, y=${markedArea.y || 'N/A'}<br>
+                    Größe: ${markedArea.width || 'N/A'} × ${markedArea.height || 'N/A'} px
+                  </p>
+                </div>
+              </div>
+              ` : ''}
+              
+              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
+                <p style="color: #6b7280; font-size: 14px; margin: 0;">
+                  <strong>Nächste Schritte:</strong>
+                </p>
+                <ul style="color: #6b7280; font-size: 14px; margin: 10px 0;">
+                  <li>Feedback in der Admin-Konsole überprüfen</li>
+                  <li>Bei Bedarf Benutzer kontaktieren: ${userEmail}</li>
+                  <li>Verbesserungen implementieren</li>
+                  <li>Feedback als bearbeitet markieren</li>
+                </ul>
+              </div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px; color: #64748b; font-size: 12px;">
+              <p>Diese E-Mail wurde automatisch vom Feedback-System generiert.</p>
+              <p>© 2024 Politisches Planspiel Deutschland</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+
+      const textContent = `
+Neues Feedback erhalten - Politisches Planspiel Deutschland
+
+Feedback-Details:
+- ID: ${feedbackId}
+- Zeitpunkt: ${currentDate}
+- Benutzer: ${userName}
+- E-Mail: ${userEmail}
+- Seite: ${pageUrl}
+${sessionId ? `- Session-ID: ${sessionId}` : ''}
+
+Feedback-Text:
+${feedbackText}
+
+${markedArea ? `
 Markierter Bereich:
-- X-Position: ${marked_area.x}px
-- Y-Position: ${marked_area.y}px  
-- Breite: ${marked_area.width}px
-- Höhe: ${marked_area.height}px
+Position: x=${markedArea.x || 'N/A'}, y=${markedArea.y || 'N/A'}
+Größe: ${markedArea.width || 'N/A'} × ${markedArea.height || 'N/A'} px
+` : ''}
 
-=== FEEDBACK-TEXT ===
-${feedback_text}
+Nächste Schritte:
+- Feedback in der Admin-Konsole überprüfen
+- Bei Bedarf Benutzer kontaktieren: ${userEmail}
+- Verbesserungen implementieren
+- Feedback als bearbeitet markieren
 
-=== TECHNISCHE DETAILS ===
-Screenshot-Größe: ${screenshot_data ? (screenshot_data.length / 1024 / 1024).toFixed(2) : 0} MB
-Zeitstempel: ${new Date().toLocaleString('de-DE')}
+Diese E-Mail wurde automatisch vom Feedback-System generiert.
+© 2024 Politisches Planspiel Deutschland
+      `
 
-Der Screenshot mit dem markierten Bereich ist als Anhang beigefügt.
-    `
+      // E-Mail senden via SMTP
+      await client.send({
+        from: "info@startbiz.de",
+        to: adminEmail,
+        subject: `Neues Feedback - Politisches Planspiel (${feedbackId.substring(0, 8)})`,
+        text: textContent,
+        html: htmlContent,
+      })
 
-    const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Neues Feedback - Politisches Planspiel</title>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-    .header { background: #3b82f6; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-    .content { padding: 20px; background: #f9f9f9; border: 1px solid #ddd; }
-    .feedback-box { background: white; padding: 15px; border-left: 4px solid #3b82f6; margin: 15px 0; }
-    .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 15px 0; }
-    .detail-item { background: white; padding: 10px; border-radius: 5px; border: 1px solid #ddd; }
-    .detail-label { font-weight: bold; color: #666; font-size: 12px; text-transform: uppercase; }
-    .detail-value { color: #333; margin-top: 5px; }
-    .marked-area { background: #fef3c7; padding: 10px; border-radius: 5px; border: 1px solid #f59e0b; }
-    .footer { padding: 15px; text-align: center; font-size: 12px; color: #666; background: #f3f4f6; border-radius: 0 0 8px 8px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🎯 Neues Feedback erhalten!</h1>
-      <p>Politisches Planspiel Deutschland 2025-2037</p>
-    </div>
-    
-    <div class="content">
-      <div class="details-grid">
-        <div class="detail-item">
-          <div class="detail-label">Benutzer-ID</div>
-          <div class="detail-value">${user_id}</div>
-        </div>
-        <div class="detail-item">
-          <div class="detail-label">Session-ID</div>
-          <div class="detail-value">${session_id || 'Keine Session'}</div>
-        </div>
-        <div class="detail-item">
-          <div class="detail-label">Spieler-Email</div>
-          <div class="detail-value">${player_email || 'Nicht verfügbar'}</div>
-        </div>
-        <div class="detail-item">
-          <div class="detail-label">Seite</div>
-          <div class="detail-value">${page_url}</div>
-        </div>
-      </div>
+      await client.close()
+      console.log('Feedback-E-Mail erfolgreich via SMTP gesendet')
 
-      <div class="marked-area">
-        <h3>📍 Markierter Bereich</h3>
-        <p><strong>Position:</strong> X: ${marked_area.x}px, Y: ${marked_area.y}px</p>
-        <p><strong>Größe:</strong> ${marked_area.width}px × ${marked_area.height}px</p>
-      </div>
-
-      <div class="feedback-box">
-        <h3>💬 Feedback-Text</h3>
-        <p style="white-space: pre-wrap; font-size: 14px; line-height: 1.5;">${feedback_text}</p>
-      </div>
-
-      <div style="background: #e5e7eb; padding: 15px; border-radius: 5px; margin-top: 20px;">
-        <h4>📸 Screenshot-Information</h4>
-        <p><strong>Dateigröße:</strong> ${screenshot_data ? (screenshot_data.length / 1024 / 1024).toFixed(2) : 0} MB</p>
-        <p><strong>Zeitstempel:</strong> ${new Date().toLocaleString('de-DE')}</p>
-        <p><em>Der Screenshot mit dem markierten Bereich ist als Anhang beigefügt.</em></p>
-      </div>
-    </div>
-    
-    <div class="footer">
-      <p>Diese E-Mail wurde automatisch vom Feedback-System generiert.</p>
-      <p>Politisches Planspiel Deutschland © 2025</p>
-    </div>
-  </div>
-</body>
-</html>
-    `
-
-    // Versuche E-Mail zu senden
-    const resendApiKey = Deno.env.get('RESEND_API_KEY')
-    console.log('Resend API Key available:', !!resendApiKey);
-    console.log('Screenshot data available:', !!screenshot_data);
-    
-    let emailSent = false
-    let emailError = null
-    
-    // E-Mail senden auch ohne Screenshot, falls verfügbar
-    if (resendApiKey) {
-      try {
-        const emailPayload = {
-          from: 'Politisches Planspiel <feedback@planspiel.de>',
-          to: ['thomas.ralf.hain@gmail.com'],
-          subject: `🎯 Neues Feedback - Politisches Planspiel (${user_id})`,
-          html: emailHtml,
-          text: emailContent
-        };
-        
-        // Screenshot als Anhang hinzufügen, falls vorhanden
-        if (screenshot_data && screenshot_data.includes('data:image')) {
-          emailPayload.attachments = [{
-            content: screenshot_data.split(',')[1], // Base64 ohne data:image/jpeg;base64,
-            filename: `feedback-screenshot-${user_id}-${Date.now()}.jpg`,
-            type: 'image/jpeg',
-            disposition: 'attachment'
-          }];
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Feedback-E-Mail erfolgreich gesendet'
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
-        
-        console.log('Sending email with payload:', {
-          ...emailPayload,
-          attachments: emailPayload.attachments ? `[${emailPayload.attachments.length} attachments]` : 'none'
-        });
-        
-        const response = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(emailPayload)
-        })
-        
-        if (response.ok) {
-          const responseData = await response.json();
-          console.log('Email sent successfully via Resend')
-          console.log('Resend response:', responseData);
-          emailSent = true
-        } else {
-          const errorText = await response.text()
-          console.error('Resend API error:', errorText)
-          emailError = `Resend API error: ${errorText}`
-        }
-      } catch (error) {
-        console.error('Error sending email via Resend:', error)
-        emailError = `Email sending failed: ${error.message}`
-      }
-    } else {
-      const missingItems = []
-      if (!resendApiKey) missingItems.push('RESEND_API_KEY')
+      )
+
+    } catch (emailError) {
+      console.error('SMTP E-Mail-Versand fehlgeschlagen:', emailError)
       
-      console.warn(`Email not sent - missing: ${missingItems.join(', ')}`)
-      emailError = `Missing: ${missingItems.join(', ')}`
+      return new Response(
+        JSON.stringify({ 
+          error: 'Feedback-E-Mail konnte nicht gesendet werden',
+          details: 'SMTP-Verbindung fehlgeschlagen oder E-Mail-Service nicht erreichbar'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
     }
 
-    // Erfolgreiche Antwort zurückgeben
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Feedback erfolgreich verarbeitet',
-        emailSent: emailSent,
-        emailError: emailError,
-        feedbackId: `feedback-${Date.now()}`
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      },
-    )
   } catch (error) {
-    console.error('Critical error in feedback processing:', error)
+    console.error('Feedback-E-Mail Fehler:', error)
     return new Response(
       JSON.stringify({ 
-        success: false,
-        error: 'Fehler beim Verarbeiten des Feedbacks',
-        details: error.message 
+        error: 'Interner Server-Fehler',
+        details: error.message
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      },
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
     )
   }
 })

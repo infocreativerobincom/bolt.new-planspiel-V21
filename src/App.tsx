@@ -1,13 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { useAuthState } from './hooks/useAuth';
-import { AuthModal } from './components/AuthModal';
-import { EmailConfirmation } from './components/EmailConfirmation';
-import { GameModeSelection } from './components/GameModeSelection';
-import { SpielleiterDashboard } from './components/SpielleiterDashboard';
-import { FeedbackButton } from './components/FeedbackButton';
-import { createGameSession, joinGameSession, saveGameState, getPlayerGameState } from './lib/supabase';
-import { GameSession } from './types/auth';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import { AuthWrapper } from './components/auth/AuthWrapper';
 import { useGameState } from './hooks/useGameState';
 import { GameDashboard } from './components/GameDashboard';
 import { DecisionCard } from './components/DecisionCard';
@@ -19,6 +13,7 @@ import { LegislatureEvaluationModal } from './components/LegislatureEvaluationMo
 import { YearlyEvaluationModal } from './components/YearlyEvaluationModal';
 import { EvaluationsTab } from './components/EvaluationsTab';
 import { DecisionLimitModal } from './components/DecisionLimitModal';
+import { EmailVerificationPage } from './components/auth/EmailVerificationPage';
 import { Decision, DecisionOption, TriggeredEvent } from './types/game';
 import { Play, BarChart3, Clock, Users, RotateCcw, AlertTriangle, History, FastForward, SkipForward, Timer, ChevronDown, ChevronUp, Save, FileText } from 'lucide-react';
 
@@ -63,18 +58,21 @@ const getCategoryMapping = (category: string): string => {
 };
 
 function App() {
+  const [gameMode, setGameMode] = useState<{ type: 'solo' | 'group'; groupId?: string } | null>(null);
+  
   return (
     <Router>
-      <Routes>
-        <Route path="/auth/callback" element={<EmailConfirmation />} />
-        <Route path="/*" element={<MainApp />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/verify-email" element={<EmailVerificationPage />} />
+          <Route path="/*" element={<MainApp gameMode={gameMode} setGameMode={setGameMode} />} />
+        </Routes>
+      </AuthProvider>
     </Router>
   );
 }
 
-function MainApp() {
-  const { authState, signUp, signIn, signOut, setCurrentSession } = useAuthState();
+const MainApp: React.FC<{ gameMode: any; setGameMode: any }> = ({ gameMode, setGameMode }) => {
   
   const { 
     gameState, 
@@ -101,10 +99,6 @@ function MainApp() {
     getDecisionsLimitReached
   } = useGameState();
   
-  // All useState hooks must be at the top level
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [gameMode, setGameMode] = useState<'selection' | 'solo' | 'group' | 'spielleiter'>('selection');
-  const [currentGameSession, setCurrentGameSession] = useState<GameSession | null>(null);
   const [currentView, setCurrentView] = useState<'dashboard' | 'decisions' | 'history' | 'evaluations'>('dashboard');
   const [showEvent, setShowEvent] = useState<TriggeredEvent | null>(null);
   const [showEvaluation, setShowEvaluation] = useState(false);
@@ -117,44 +111,6 @@ function MainApp() {
 
   const availableDecisions = getAvailableDecisions();
   const metricsHistory = getMetricsHistory();
-
-  // Zeige Auth Modal wenn nicht eingeloggt
-  useEffect(() => {
-    if (!authState.isLoading && !authState.user) {
-      setShowAuthModal(true);
-    }
-  }, [authState.isLoading, authState.user]);
-
-  // Lade Spielstand wenn in Gruppensession
-  useEffect(() => {
-    if (authState.user && currentGameSession && gameMode === 'group') {
-      loadGroupGameState();
-    }
-  }, [authState.user, currentGameSession, gameMode]);
-
-  const loadGroupGameState = async () => {
-    if (!authState.user || !currentGameSession) return;
-    
-    try {
-      const playerSession = await getPlayerGameState(authState.user.id, currentGameSession.id);
-      if (playerSession?.game_state) {
-        loadSavedGame(playerSession.game_state);
-      }
-    } catch (error) {
-      console.error('Fehler beim Laden des Gruppenspiels:', error);
-    }
-  };
-
-  // Speichere Spielstand automatisch bei Änderungen in Gruppensession
-  useEffect(() => {
-    if (authState.user && currentGameSession && gameMode === 'group') {
-      const saveInterval = setInterval(() => {
-        saveGameState(authState.user!.id, currentGameSession.id, gameState);
-      }, 30000); // Alle 30 Sekunden speichern
-      
-      return () => clearInterval(saveInterval);
-    }
-  }, [authState.user, currentGameSession, gameMode, gameState]);
 
   // Timer-Display aktualisieren
   useEffect(() => {
@@ -178,201 +134,223 @@ function MainApp() {
     }
   }, [currentView, pauseTimer, resumeTimer, startDecisionTimer, decisionStartTime]);
 
-  const handleStartSolo = () => {
-    setGameMode('solo');
-    resetGame();
-  };
-
-  const handleCreateGroup = async (groupData: any) => {
-    if (!authState.user) return;
-    
-    try {
-      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      
-      console.log('Creating session with data:', {
-        name: groupData.name,
-        spielleiter_id: authState.user.id,
-        game_type: 'group',
-        age_group: groupData.ageGroup,
-        target_audience: groupData.targetAudience,
-        spielleiter_info: groupData.spielleiterInfo,
-        max_players: groupData.maxPlayers,
-        current_players: 0,
-        invite_code: inviteCode,
-        pause_points: [],
-        is_paused: false,
-        show_results_to_players: false
-      });
-      
-      const session = await createGameSession({
-        name: groupData.name,
-        spielleiter_id: authState.user.id,
-        game_type: 'group',
-        age_group: groupData.ageGroup,
-        target_audience: groupData.targetAudience,
-        spielleiter_info: groupData.spielleiterInfo,
-        max_players: groupData.maxPlayers,
-        current_players: 0,
-        invite_code: inviteCode,
-        pause_points: [],
-        is_paused: false,
-        show_results_to_players: false
-      });
-      
-      setCurrentGameSession(session);
-      setCurrentSession(session);
-      setGameMode('spielleiter');
-    } catch (error) {
-      console.error('Fehler beim Erstellen des Gruppenspiels:', error);
-      
-      // Detailliertere Fehlermeldung
-      let errorMessage = 'Fehler beim Erstellen des Gruppenspiels.';
-      if (error.message) {
-        errorMessage += ` Details: ${error.message}`;
-      }
-      if (error.details) {
-        errorMessage += ` Weitere Details: ${error.details}`;
-      }
-      if (error.hint) {
-        errorMessage += ` Hinweis: ${error.hint}`;
-      }
-      
-      alert(errorMessage);
+  const handleDecisionMade = (decision: Decision, selectedOptions: DecisionOption[]) => {
+    // Prüfe Entscheidungslimit vor der Anwendung
+    if (getDecisionsLimitReached()) {
+      setShowDecisionLimit(true);
+      setCurrentView('dashboard');
+      return;
     }
-  };
-
-  const handleJoinGroup = async (inviteCode: string) => {
-    if (!authState.user) return;
     
-    try {
-      const playerSession = await joinGameSession(inviteCode, authState.user.id);
-      // Session-Daten laden
-      const { data: session } = await supabase
-        .from('game_sessions')
-        .select('*')
-        .eq('invite_code', inviteCode)
-        .single();
-        
-      setCurrentGameSession(session);
-      setCurrentSession(session);
-      setGameMode('group');
-      resetGame();
-    } catch (error) {
-      console.error('Fehler beim Beitreten:', error);
-      alert('Fehler beim Beitreten des Gruppenspiels. Prüfen Sie den Einladungscode.');
+    applyDecision(decision, selectedOptions);
+    
+    // Nach der Entscheidung prüfen ob Limit erreicht wurde
+    if (getDecisionsLimitReached()) {
+      setShowDecisionLimit(true);
+      setCurrentView('dashboard');
+      return;
     }
-  };
-
-  const handleLoadSavedGame = async (saveId: string) => {
-    try {
-      const loadResult: { gameMode: string; sessionId?: string } = await loadSavedGame(saveId);
-      if (loadResult) {
-        // Set the correct game mode and session
-        setGameMode(loadResult.gameMode as 'solo' | 'group' | 'spielleiter');
-        if (loadResult.sessionId) {
-          // Load session data if it's a group game
-          const { data: session, error } = await supabase
-            .from('game_sessions')
-            .select('*')
-            .eq('id', loadResult.sessionId)
-            .single();
-          
-          if (!error && session) {
-            setCurrentGameSession(session);
-            setCurrentSession(session);
-          }
-        } else {
-          setCurrentGameSession(null);
-          setCurrentSession(null);
+    
+    // Prüfe auf Legislaturauswertung (zuerst)
+    if (shouldShowLegislatureEvaluation()) {
+      setShowLegislatureEvaluation(true);
+      // Jahresauswertung wird nach Legislaturauswertung gezeigt
+      setTimeout(() => {
+        if (shouldShowYearlyEvaluation()) {
+          setShowYearlyEvaluation(true);
         }
-        // Set view to dashboard after loading
-        setCurrentView('dashboard');
-        setShowSaveModal(false);
-      }
-    } catch (error) {
-      console.error('Error loading game:', error);
-      alert('Fehler beim Laden des Spielstands.');
+      }, 100);
+      setCurrentView('dashboard');
+      return;
     }
-  };
-  const handleSignOut = async () => {
-    await signOut();
-    setGameMode('selection');
-    setCurrentGameSession(null);
-    setCurrentSession(null);
-    resetGame();
+    
+    // Prüfe auf Jahresauswertung
+    if (shouldShowYearlyEvaluation()) {
+      setShowYearlyEvaluation(true);
+      setCurrentView('dashboard');
+      return;
+    }
+    
+    // Check for triggered events
+    const latestEvent = gameState.triggeredEvents[gameState.triggeredEvents.length - 1];
+    if (latestEvent && latestEvent.year === gameState.currentYear) {
+      setShowEvent(latestEvent);
+    }
+    
+    // Check for evaluation
+    if (shouldShowEvaluation()) {
+      setShowEvaluation(true);
+    }
+    
+    // Reset to dashboard after decision
+    setCurrentView('dashboard');
   };
 
-  // Loading state
-  if (authState.isLoading) {
+  const handleStartDecision = () => {
+    if (getDecisionsLimitReached()) {
+      setShowDecisionLimit(true);
+      return;
+    }
+    
+    if (availableDecisions.length > 0) {
+      setCurrentView('decisions');
+    }
+  };
+
+  const handleEvaluationClose = () => {
+    setShowEvaluation(false);
+    if (gameState.currentDecision >= 40) {
+      setCurrentView('dashboard');
+    }
+  };
+
+  const getEvaluationNumber = () => {
+    return Math.ceil(gameState.currentDecision / 10);
+  };
+
+  const getGameProgress = () => {
+    return (gameState.currentDecision / 40) * 100;
+  };
+
+  const handleAdvanceToEndOfYear = () => {
+    if (confirm(`Möchten Sie die Zeit bis zum Ende des Jahres ${gameState.currentYear} vorspulen?`)) {
+      advanceToEndOfYear();
+    }
+  };
+
+  const handleAdvanceToEndOfLegislature = () => {
+    const nextElectionYear = 2025 + Math.ceil((gameState.currentYear - 2025 + 1) / 4) * 4;
+    if (confirm(`Möchten Sie die Zeit bis zum Ende der Legislaturperiode (${nextElectionYear}) vorspulen?`)) {
+      advanceToEndOfLegislature();
+    }
+  };
+
+  // Entscheidungen nach politischen Bereichen gruppieren
+  const groupDecisionsByCategory = () => {
+    const grouped: { [key: string]: Decision[] } = {};
+    
+    availableDecisions.forEach(decision => {
+      const politicalCategory = getCategoryMapping(decision.category);
+      if (!grouped[politicalCategory]) {
+        grouped[politicalCategory] = [];
+      }
+      grouped[politicalCategory].push(decision);
+    });
+    
+    return grouped;
+  };
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [category]: !prev[category]
+    }));
+  };
+
+  // Game Over Check
+  if (gameState.gameOver) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Wird geladen...</p>
+      <div className="min-h-screen bg-red-50 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
+          <div className="text-center">
+            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Spiel beendet</h1>
+            <h2 className="text-lg font-semibold text-red-600 mb-4">{gameState.gameOver.reason}</h2>
+            <p className="text-gray-600 mb-6">{gameState.gameOver.description}</p>
+            <div className="space-y-3">
+              <div className="text-sm text-gray-500">
+                Erreichte Entscheidungen: {gameState.currentDecision}/40
+              </div>
+              <div className="text-sm text-gray-500">
+                Finale Bewertung: {gameState.metrics.gesamtbewertung.toFixed(1)}/100
+              </div>
+              <button
+                onClick={resetGame}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Neues Spiel starten
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Auth Modal
-  if (showAuthModal) {
-    return (
-      <>
-        <AuthModal
-          isOpen={showAuthModal}
-          onClose={() => setShowAuthModal(false)}
-          onSignUp={signUp}
-          onSignIn={signIn}
-        />
-        <FeedbackButton />
-      </>
-    );
-  }
+  return (
+    <AuthWrapper 
+      onGameModeSelected={(mode, groupId) => setGameMode({ type: mode, groupId })}
+    >
+      {gameMode && <GameContent gameMode={gameMode} />}
+    </AuthWrapper>
+  );
+};
 
-  // Game Mode Selection
-  if (gameMode === 'selection') {
-    return (
-      <>
-        <div className="min-h-screen bg-gray-50">
-          <div className="bg-white shadow-sm border-b">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center justify-between h-16">
-                <h1 className="text-xl font-bold text-gray-900">
-                  Willkommen, {authState.user?.name}
-                </h1>
-                <button
-                  onClick={handleSignOut}
-                  className="text-gray-600 hover:text-gray-800"
-                >
-                  Abmelden
-                </button>
-              </div>
-            </div>
-          </div>
-          <GameModeSelection
-            onStartSolo={handleStartSolo}
-            onCreateGroup={handleCreateGroup}
-            onJoinGroup={handleJoinGroup}
-            userRole={authState.user?.role || 'player'}
-          />
-        </div>
-        <FeedbackButton userId={authState.user?.id} />
-      </>
-    );
-  }
+interface GameContentProps {
+  gameMode: { type: 'solo' | 'group'; groupId?: string };
+}
 
-  // Spielleiter Dashboard
-  if (gameMode === 'spielleiter' && currentGameSession) {
-    return (
-      <>
-        <SpielleiterDashboard
-          session={currentGameSession}
-          onUpdateSession={setCurrentGameSession}
-        />
-        <FeedbackButton userId={authState.user?.id} sessionId={currentGameSession.id} />
-      </>
-    );
-  }
+const GameContent: React.FC<GameContentProps> = ({ gameMode }) => {
+  const { 
+    gameState, 
+    applyDecision, 
+    getAvailableDecisions, 
+    shouldShowEvaluation,
+    getMetricsHistory,
+    calculateGesamtbewertung,
+    formatCurrency,
+    resetGame,
+    advanceToEndOfYear,
+    advanceToEndOfLegislature,
+    startDecisionTimer,
+    pauseTimer,
+    resumeTimer,
+    decisionStartTime,
+    getCurrentMonth,
+    getCurrentTimerDisplay,
+    interestRate,
+    loadSavedGame,
+    saveCurrentGame,
+    shouldShowYearlyEvaluation,
+    shouldShowLegislatureEvaluation,
+    getDecisionsLimitReached
+  } = useGameState();
+  
+  const [currentView, setCurrentView] = useState<'dashboard' | 'decisions' | 'history' | 'evaluations'>('dashboard');
+  const [showEvent, setShowEvent] = useState<TriggeredEvent | null>(null);
+  const [showEvaluation, setShowEvaluation] = useState(false);
+  const [showYearlyEvaluation, setShowYearlyEvaluation] = useState(false);
+  const [showLegislatureEvaluation, setShowLegislatureEvaluation] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showDecisionLimit, setShowDecisionLimit] = useState(false);
+  const [timerDisplay, setTimerDisplay] = useState({ hours: 0, minutes: 0, seconds: 0 });
+  const [expandedCategories, setExpandedCategories] = useState<{ [key: string]: boolean }>({});
+
+  const availableDecisions = getAvailableDecisions();
+  const metricsHistory = getMetricsHistory();
+
+  // Timer-Display aktualisieren
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimerDisplay(getCurrentTimerDisplay());
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [getCurrentTimerDisplay]);
+
+  // Timer pausieren/fortsetzen basierend auf Tab
+  useEffect(() => {
+    if (currentView === 'decisions') {
+      if (!decisionStartTime) {
+        startDecisionTimer();
+      } else {
+        resumeTimer();
+      }
+    } else {
+      pauseTimer();
+    }
+  }, [currentView, pauseTimer, resumeTimer, startDecisionTimer, decisionStartTime]);
 
   const handleDecisionMade = (decision: Decision, selectedOptions: DecisionOption[]) => {
     // Prüfe Entscheidungslimit vor der Anwendung
@@ -530,14 +508,13 @@ function MainApp() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Politisches Planspiel Deutschland</h1>
-                <p className="text-sm text-gray-600">Zeitraum: 2025-2037</p>
+                <p className="text-sm text-gray-600">
+                  Zeitraum: 2025-2037 | Modus: {gameMode.type === 'solo' ? 'Solo-Spiel' : 'Gruppen-Spiel'}
+                </p>
               </div>
             </div>
             
             <div className="flex items-center gap-6">
-              <div className="text-sm text-gray-600">
-                {authState.user?.name} ({authState.user?.role})
-              </div>
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Clock className="h-4 w-4" />
                 <span>{getCurrentMonth()} {gameState.currentYear}</span>
@@ -577,14 +554,6 @@ function MainApp() {
                 title="Spiel zurücksetzen"
               >
                 <RotateCcw className="h-5 w-5" />
-              </button>
-              
-              <button
-                onClick={handleSignOut}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                title="Abmelden"
-              >
-                Abmelden
               </button>
               
               <button
@@ -856,8 +825,6 @@ function MainApp() {
         )}
       </main>
 
-      <FeedbackButton userId={authState.user?.id} sessionId={currentGameSession?.id} />
-
       {/* Modals */}
       {showEvent && (
         <EventModal
@@ -902,10 +869,7 @@ function MainApp() {
           onClose={() => setShowSaveModal(false)}
           gameState={gameState}
           onSave={saveCurrentGame}
-          onLoad={handleLoadSavedGame}
-          userId={authState.user?.id}
-          gameMode={gameMode}
-          sessionId={currentGameSession?.id}
+          onLoad={loadSavedGame}
         />
       )}
 
@@ -924,6 +888,6 @@ function MainApp() {
       )}
     </div>
   );
-}
+};
 
 export default App;

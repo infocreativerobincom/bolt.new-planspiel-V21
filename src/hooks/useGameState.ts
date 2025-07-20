@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { GameState, GameMetrics, CompletedDecision, Decision, DecisionOption } from '../types/game';
 import { decisions } from '../data/decisions';
 import { gameEvents } from '../data/events';
-import { loadUserGameById } from '../lib/supabase';
+import { SaveGameModal } from '../components/SaveGameModal';
 
 const initialMetrics: GameMetrics = {
   popularitaetBeiWaehlern: 50,
@@ -909,33 +909,22 @@ export const useGameState = () => {
   }, [timerStartTime, gameState.timeProgress.isPaused, gameState.timeProgress.totalElapsedTime]);
 
   const loadSavedGame = useCallback((saveId: string) => {
-    return new Promise<{ gameMode: string; sessionId?: string }>(async (resolve, reject) => {
-      try {
-        const saveGame = await loadUserGameById(saveId);
-        if (saveGame) {
-          setGameState(saveGame.game_state);
-          // Timer entsprechend setzen
-          if (saveGame.game_state.timeProgress) {
-            setTimerStartTime(Date.now() - saveGame.game_state.timeProgress.totalElapsedTime);
-          }
-          // Return game mode and session info for App.tsx to handle
-          resolve({
-            gameMode: saveGame.game_mode,
-            sessionId: saveGame.session_id
-          });
-        } else {
-          reject(new Error('Spielstand nicht gefunden'));
+    const saved = localStorage.getItem('political-game-saves');
+    if (saved) {
+      const saves = JSON.parse(saved);
+      const saveGame = saves.find((s: any) => s.id === saveId);
+      if (saveGame) {
+        setGameState(saveGame.gameState);
+        // Timer entsprechend setzen
+        if (saveGame.gameState.timeProgress) {
+          setTimerStartTime(Date.now() - saveGame.gameState.timeProgress.totalElapsedTime);
         }
-      } catch (error) {
-        console.error('Error loading saved game:', error);
-        reject(error);
       }
-    });
+    }
   }, []);
 
-  const saveCurrentGame = useCallback((name: string, gameMode: string, sessionId?: string) => {
-    // This is now handled by SaveGameModal with Supabase integration
-    console.log('Game saved:', name, gameMode, sessionId);
+  const saveCurrentGame = useCallback((name: string) => {
+    // Wird vom SaveGameModal gehandhabt
   }, []);
 
   // Prüfe ob Jahr abgeschlossen ist (8 Entscheidungen oder Jahreswechsel)

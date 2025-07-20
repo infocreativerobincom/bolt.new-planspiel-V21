@@ -1,68 +1,60 @@
 export interface User {
   id: string;
-  name: string;
   email: string;
-  role: 'spielleiter' | 'player';
-  groupId?: string;
-  createdAt: Date;
+  password?: string; // Nur für Registrierung, wird nicht gespeichert
+  firstName: string;
+  lastName: string;
+  role: 'player' | 'instructor';
+  isVerified: boolean;
+  verificationToken?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GameGroup {
   id: string;
   name: string;
   description: string;
-  spielleiterId: string;
-  maxPlayers: number;
-  currentPlayers: number;
+  instructorId: string;
   ageGroup: string;
   targetAudience: string;
-  gameMode: 'solo' | 'group';
+  instructorInfo: string;
+  maxPlayers: number;
   inviteCode: string;
-  gameStops: GameStop[];
-  settings: GroupSettings;
-  createdAt: Date;
+  pausePoints: string[]; // Array von Daten im Format "YYYY-MM-DD"
+  currentPausePoint?: string;
+  isPaused: boolean;
+  showResultsToPlayers: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface GameStop {
+export interface GroupMembership {
   id: string;
-  date: string; // YYYY-MM-DD format (e.g., "2029-01-01")
-  year: number;
-  isActive: boolean;
-  description?: string;
-}
-
-export interface GroupSettings {
-  allowPlayerEvaluations: boolean;
-  allowPlayerComparisons: boolean;
-  showLeaderboard: boolean;
-}
-
-export interface PlayerProgress {
+  groupId: string;
   playerId: string;
-  playerName: string;
-  currentYear: number;
-  currentDate: string;
-  gameState: any;
-  decisions: any[];
-  lastActivity: Date;
-  isBlocked: boolean;
-  blockedUntil?: string;
+  joinedAt: string;
+  isActive: boolean;
 }
 
-export interface FeedbackItem {
+export interface UserGameState {
   id: string;
   userId: string;
-  userName: string;
   groupId?: string;
-  url: string;
-  screenshot: string;
-  markingArea: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  message: string;
-  timestamp: Date;
-  sent: boolean;
+  gameState: any; // Das GameState Objekt
+  saveName: string;
+  isAutoSave: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+}
+
+export interface GameMode {
+  type: 'solo' | 'group';
+  groupId?: string;
 }

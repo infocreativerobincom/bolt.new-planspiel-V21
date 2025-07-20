@@ -1,27 +1,23 @@
 import React, { useState } from 'react';
 import { GameState } from '../types/game';
 import { Save, Loader as Load, Trash2, Calendar, Users, Clock, X } from 'lucide-react';
-import { saveUserGame, loadUserGames, deleteUserGame } from '../lib/supabase';
 
 interface SaveGameModalProps {
   isOpen: boolean;
   onClose: () => void;
   gameState: GameState;
-  onSave: (name: string, gameMode: string, sessionId?: string) => void;
+  onSave: (name: string) => void;
   onLoad: (saveId: string) => void;
-  userId?: string;
-  gameMode: string;
-  sessionId?: string;
 }
 
 interface SavedGame {
   id: string;
   name: string;
-  game_state: GameState;
-  game_mode: string;
-  session_id?: string;
-  created_at: string;
-  updated_at: string;
+  timestamp: string;
+  gameState: GameState;
+  decisionsCount: number;
+  gameMonth: string;
+  gameYear: number;
 }
 
 export const SaveGameModal: React.FC<SaveGameModalProps> = ({ 
@@ -29,37 +25,13 @@ export const SaveGameModal: React.FC<SaveGameModalProps> = ({
   onClose, 
   gameState, 
   onSave, 
-  onLoad,
-  userId,
-  gameMode,
-  sessionId
+  onLoad 
 }) => {
   const [saveName, setSaveName] = useState('');
-  const [savedGames, setSavedGames] = useState<SavedGame[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  // Load saved games when modal opens
-  React.useEffect(() => {
-    if (isOpen && userId) {
-      loadSavedGames();
-    }
-  }, [isOpen, userId]);
-
-  const loadSavedGames = async () => {
-    if (!userId) return;
-    
-    try {
-      setIsLoading(true);
-      const games = await loadUserGames(userId);
-      setSavedGames(games || []);
-    } catch (err) {
-      console.error('Error loading saved games:', err);
-      setError('Fehler beim Laden der gespeicherten Spiele');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [savedGames, setSavedGames] = useState<SavedGame[]>(() => {
+    const saved = localStorage.getItem('political-game-saves');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   const getCurrentMonth = () => {
     const months = [
@@ -69,33 +41,29 @@ export const SaveGameModal: React.FC<SaveGameModalProps> = ({
     return months[gameState.timeProgress?.currentMonth - 1] || 'Januar';
   };
 
-  const handleSave = async () => {
-    if (!userId) {
-      alert('Sie müssen angemeldet sein, um Spielstände zu speichern.');
-      return;
-    }
-    
+  const handleSave = () => {
     if (!saveName.trim()) {
       alert('Bitte geben Sie einen Namen für den Spielstand ein.');
       return;
     }
 
-    try {
-      setIsLoading(true);
-      await saveUserGame(userId, saveName.trim(), gameState, gameMode, sessionId);
-      
-      onSave(saveName, gameMode, sessionId);
-      setSaveName('');
-      alert('Spielstand erfolgreich gespeichert!');
-      
-      // Reload saved games
-      await loadSavedGames();
-    } catch (err) {
-      console.error('Error saving game:', err);
-      alert('Fehler beim Speichern des Spielstands.');
-    } finally {
-      setIsLoading(false);
-    }
+    const newSave: SavedGame = {
+      id: Date.now().toString(),
+      name: saveName.trim(),
+      timestamp: new Date().toLocaleString('de-DE'),
+      gameState: { ...gameState },
+      decisionsCount: gameState.currentDecision,
+      gameMonth: getCurrentMonth(),
+      gameYear: gameState.currentYear
+    };
+
+    const updatedSaves = [...savedGames, newSave];
+    setSavedGames(updatedSaves);
+    localStorage.setItem('political-game-saves', JSON.stringify(updatedSaves));
+    
+    onSave(saveName);
+    setSaveName('');
+    alert('Spielstand erfolgreich gespeichert!');
   };
 
   const handleLoad = (saveId: string) => {
@@ -105,18 +73,11 @@ export const SaveGameModal: React.FC<SaveGameModalProps> = ({
     }
   };
 
-  const handleDelete = async (saveId: string) => {
+  const handleDelete = (saveId: string) => {
     if (confirm('Möchten Sie diesen Spielstand wirklich löschen?')) {
-      try {
-        setIsLoading(true);
-        await deleteUserGame(saveId);
-        await loadSavedGames();
-      } catch (err) {
-        console.error('Error deleting game:', err);
-        alert('Fehler beim Löschen des Spielstands.');
-      } finally {
-        setIsLoading(false);
-      }
+      const updatedSaves = savedGames.filter(save => save.id !== saveId);
+      setSavedGames(updatedSaves);
+      localStorage.setItem('political-game-saves', JSON.stringify(updatedSaves));
     }
   };
 
@@ -139,11 +100,6 @@ export const SaveGameModal: React.FC<SaveGameModalProps> = ({
           {/* Speichern */}
           <div className="bg-blue-50 rounded-lg p-4 mb-6">
             <h3 className="text-lg font-semibold text-blue-900 mb-3">Aktuellen Spielstand speichern</h3>
-            {!userId && (
-              <div className="mb-3 p-2 bg-yellow-100 border border-yellow-300 rounded text-yellow-800 text-sm">
-                Sie müssen angemeldet sein, um Spielstände zu speichern.
-              </div>
-            )}
             <div className="flex gap-3">
               <input
                 type="text"
@@ -152,15 +108,13 @@ export const SaveGameModal: React.FC<SaveGameModalProps> = ({
                 placeholder="Name für den Spielstand eingeben..."
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 maxLength={50}
-                disabled={!userId || isLoading}
               />
               <button
                 onClick={handleSave}
-                disabled={!userId || isLoading}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
               >
                 <Save className="h-4 w-4" />
-                {isLoading ? 'Speichert...' : 'Speichern'}
+                Speichern
               </button>
             </div>
             <div className="mt-2 text-sm text-blue-700">
@@ -171,18 +125,9 @@ export const SaveGameModal: React.FC<SaveGameModalProps> = ({
           {/* Gespeicherte Spielstände */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Gespeicherte Spielstände</h3>
-            {error && (
-              <div className="mb-3 p-2 bg-red-100 border border-red-300 rounded text-red-800 text-sm">
-                {error}
-              </div>
-            )}
-            {isLoading ? (
+            {savedGames.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                Lade gespeicherte Spielstände...
-              </div>
-            ) : savedGames.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                {userId ? 'Noch keine Spielstände gespeichert' : 'Melden Sie sich an, um Spielstände zu sehen'}
+                Noch keine Spielstände gespeichert
               </div>
             ) : (
               <div className="space-y-3">
@@ -193,27 +138,21 @@ export const SaveGameModal: React.FC<SaveGameModalProps> = ({
                       <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
                         <div className="flex items-center gap-1">
                           <Calendar className="h-4 w-4" />
-                          <span>Gespeichert: {new Date(save.updated_at).toLocaleString('de-DE')}</span>
+                          <span>Gespeichert: {save.timestamp}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Users className="h-4 w-4" />
-                          <span>{save.game_state.currentDecision} Entscheidungen</span>
+                          <span>{save.decisionsCount} Entscheidungen</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Clock className="h-4 w-4" />
-                          <span>{getCurrentMonth()} {save.game_state.currentYear}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                            {save.game_mode === 'solo' ? 'Solo' : save.game_mode === 'group' ? 'Gruppe' : 'Spielleiter'}
-                          </span>
+                          <span>{save.gameMonth} {save.gameYear}</span>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleLoad(save.id)}
-                        disabled={isLoading}
                         className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors flex items-center gap-1"
                       >
                         <Load className="h-4 w-4" />
@@ -221,7 +160,6 @@ export const SaveGameModal: React.FC<SaveGameModalProps> = ({
                       </button>
                       <button
                         onClick={() => handleDelete(save.id)}
-                        disabled={isLoading}
                         className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center gap-1"
                       >
                         <Trash2 className="h-4 w-4" />
