@@ -461,13 +461,11 @@ function App() {
                 </h2>
                 <div className="flex items-center gap-4">
                   {/* Entscheidungszeit-Timer */}
-                  {decisionStartTime && (
+                  {!gameState.timeProgress.isPaused && (
                     <div className="flex items-center gap-2 bg-orange-50 px-3 py-2 rounded-lg">
                       <Timer className="h-4 w-4 text-orange-600" />
                       <span className="text-sm font-medium text-orange-900">
-                        {String(timerDisplay.hours).padStart(2, '0')}:
-                        {String(timerDisplay.minutes).padStart(2, '0')}:
-                        {String(timerDisplay.seconds).padStart(2, '0')}
+                        Timer läuft...
                       </span>
                     </div>
                   )}
