@@ -595,49 +595,6 @@ export const useGameState = () => {
     }
   }, [gameState.timeProgress.currentDate, gameState.currentYear, timerStartTime]);
 
-  const advanceToEndOfLegislature = useCallback(() => {
-    setGameState(prev => {
-      const currentLegislatureEnd = Math.ceil((prev.currentYear - 2025 + 1) / 4) * 4 + 2025;
-      const newYear = Math.min(2037, currentLegislatureEnd);
-      const newBudget = { ...prev.budget };
-      
-      // Budget für das neue Jahr
-      if (newYear > prev.currentYear) {
-        newBudget.availableBudgetCurrentPeriod = ANNUAL_BUDGET;
-        newBudget.totalSpentCurrentPeriod = 0;
-      }
-      
-      // Berechne Tage bis zum 01.01. des Legislaturendes
-      const currentDate = new Date(prev.timeProgress.currentDate);
-      const legislatureEndDate = new Date(newYear, 0, 1);
-      const daysToAdd = Math.ceil((legislatureEndDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
-      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
-      const newTotalElapsedTime = prev.timeProgress.totalElapsedTime + timeToAdd;
-      
-      return {
-        ...prev,
-        currentYear: newYear,
-        budget: newBudget,
-        timeProgress: {
-          ...prev.timeProgress,
-          currentDate: new Date(newYear, 0, 1),
-          daysElapsed: prev.timeProgress.daysElapsed + daysToAdd,
-          totalElapsedTime: newTotalElapsedTime
-        }
-      };
-    });
-    
-    // Timer-Startzeit entsprechend anpassen
-    if (timerStartTime) {
-      const currentLegislatureEnd = Math.ceil((gameState.currentYear - 2025 + 1) / 4) * 4 + 2025;
-      const newYear = Math.min(2037, currentLegislatureEnd);
-      const currentDate = new Date(gameState.timeProgress.currentDate);
-      const legislatureEndDate = new Date(newYear, 0, 1);
-      const daysToAdd = Math.ceil((legislatureEndDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
-      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
-      setTimerStartTime(Date.now() - timeToAdd);
-    }
-  }, [gameState.currentYear, gameState.timeProgress.currentDate, timerStartTime]);
 
   const applyDecision = useCallback((decision: Decision, selectedOptions: DecisionOption[]) => {
     setGameState(prev => {
