@@ -14,7 +14,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchToLogin }) =
     confirmPassword: '',
     firstName: '',
     lastName: '',
-    role: 'player' as 'player' | 'instructor'
+    role: 'player' as 'player' | 'spielleiter'
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
