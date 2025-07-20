@@ -277,7 +277,7 @@ function App() {
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Clock className="h-4 w-4" />
-                <span>{getCurrentMonth()} {gameState.currentYear}</span>
+                <span>{getCurrentMonth()}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Users className="h-4 w-4" />
@@ -464,7 +464,7 @@ function App() {
                   <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg">
                     <Clock className="h-4 w-4 text-blue-600" />
                     <span className="text-sm font-medium text-blue-900">
-                      {getCurrentMonth()} {gameState.currentYear}
+                      {getCurrentMonth()}
                     </span>
                   </div>
                   

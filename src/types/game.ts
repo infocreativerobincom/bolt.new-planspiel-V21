@@ -11,10 +11,10 @@ export interface GameState {
   budget: BudgetState;
   coalitionStatus: CoalitionStatus;
   timeProgress?: {
-    monthsElapsed: number;
+    daysElapsed: number;
     complexityAccumulated: number;
     realTimeStart?: number;
-    currentMonth: number;
+    currentDate: Date;
     totalElapsedTime: number;
     isPaused: boolean;
   };

@@ -36,7 +36,7 @@ const GAME_STORAGE_KEY = 'political-game-state';
 const ANNUAL_BUDGET = 25000000000; // 25 Mrd EUR pro Jahr
 const INTEREST_RATE = 0.03; // 3% Zinssatz
 const MAX_DECISIONS_PER_YEAR = 8; // Maximal 8 Entscheidungen pro Jahr
-const SECONDS_PER_MONTH = 30; // 30 echte Sekunden = 1 Spielmonat
+const SECONDS_PER_DAY = 1; // 1 echte Sekunde = 1 Spieltag
 
 export const useGameState = () => {
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -55,10 +55,10 @@ export const useGameState = () => {
         }
         if (!loadedState.timeProgress) {
           loadedState.timeProgress = {
-            monthsElapsed: 0,
+            daysElapsed: 0,
             complexityAccumulated: 0,
             realTimeStart: Date.now(),
-            currentMonth: 1,
+            currentDate: new Date(2025, 0, 1), // 01.01.2025
             totalElapsedTime: 0,
             isPaused: false
           };
@@ -68,6 +68,12 @@ export const useGameState = () => {
         }
         if (typeof loadedState.timeProgress.isPaused === 'undefined') {
           loadedState.timeProgress.isPaused = false;
+        }
+        if (!loadedState.timeProgress.currentDate) {
+          loadedState.timeProgress.currentDate = new Date(2025, 0, 1);
+        }
+        if (typeof loadedState.timeProgress.daysElapsed === 'undefined') {
+          loadedState.timeProgress.daysElapsed = loadedState.timeProgress.monthsElapsed * 30 || 0;
         }
         if (!loadedState.partyPolls) {
           loadedState.partyPolls = { ...initialPartyPolls };
@@ -107,10 +113,10 @@ export const useGameState = () => {
         crisisEvents: []
       },
       timeProgress: {
-        monthsElapsed: 0,
+        daysElapsed: 0,
         complexityAccumulated: 0,
         realTimeStart: Date.now(),
-        currentMonth: 1,
+        currentDate: new Date(2025, 0, 1), // 01.01.2025
         totalElapsedTime: 0,
         isPaused: false
       },
@@ -137,17 +143,19 @@ export const useGameState = () => {
         const sessionElapsed = currentTime - timerStartTime;
         const totalElapsed = gameState.timeProgress.totalElapsedTime + sessionElapsed;
         
-        const totalMonthsElapsed = Math.floor(totalElapsed / (SECONDS_PER_MONTH * 1000));
-        const currentYear = 2025 + Math.floor(totalMonthsElapsed / 12);
-        const currentMonth = (totalMonthsElapsed % 12) + 1;
+        const totalDaysElapsed = Math.floor(totalElapsed / (SECONDS_PER_DAY * 1000));
+        const startDate = new Date(2025, 0, 1); // 01.01.2025
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + totalDaysElapsed);
+        const currentYear = currentDate.getFullYear();
         
         setGameState(prev => ({
           ...prev,
           currentYear: Math.min(2037, currentYear),
           timeProgress: {
             ...prev.timeProgress,
-            monthsElapsed: totalMonthsElapsed,
-            currentMonth: currentMonth
+            daysElapsed: totalDaysElapsed,
+            currentDate: currentDate
           }
         }));
       }, 1000);
@@ -429,9 +437,11 @@ export const useGameState = () => {
       newBudget.availableBudgetCurrentPeriod = ANNUAL_BUDGET;
       newBudget.totalSpentCurrentPeriod = 0;
       
-      // Timer-Zeit für Jahressprung berechnen - KEIN RESET
-      const monthsToAdd = 12 - prev.timeProgress.currentMonth + 1;
-      const timeToAdd = monthsToAdd * SECONDS_PER_MONTH * 1000;
+      // Berechne Tage bis zum 01.01. des nächsten Jahres
+      const currentDate = new Date(prev.timeProgress.currentDate);
+      const nextYearStart = new Date(newYear, 0, 1);
+      const daysToAdd = Math.ceil((nextYearStart.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
       const newTotalElapsedTime = prev.timeProgress.totalElapsedTime + timeToAdd;
       
       return {
@@ -440,8 +450,8 @@ export const useGameState = () => {
         budget: newBudget,
         timeProgress: {
           ...prev.timeProgress,
-          currentMonth: 1,
-          monthsElapsed: prev.timeProgress.monthsElapsed + monthsToAdd,
+          currentDate: new Date(newYear, 0, 1),
+          daysElapsed: prev.timeProgress.daysElapsed + daysToAdd,
           totalElapsedTime: newTotalElapsedTime
         }
       };
@@ -449,28 +459,31 @@ export const useGameState = () => {
     
     // Timer-Startzeit entsprechend anpassen
     if (timerStartTime) {
-      const monthsToAdd = 12 - gameState.timeProgress.currentMonth + 1;
-      const timeToAdd = monthsToAdd * SECONDS_PER_MONTH * 1000;
+      const currentDate = new Date(gameState.timeProgress.currentDate);
+      const nextYearStart = new Date(gameState.currentYear + 1, 0, 1);
+      const daysToAdd = Math.ceil((nextYearStart.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
       setTimerStartTime(Date.now() - timeToAdd);
     }
-  }, [gameState.timeProgress.currentMonth, timerStartTime]);
+  }, [gameState.timeProgress.currentDate, gameState.currentYear, timerStartTime]);
 
   const advanceToEndOfLegislature = useCallback(() => {
     setGameState(prev => {
       const currentLegislatureEnd = Math.ceil((prev.currentYear - 2025 + 1) / 4) * 4 + 2025;
       const newYear = Math.min(2037, currentLegislatureEnd);
-      const yearsDiff = newYear - prev.currentYear;
       const newBudget = { ...prev.budget };
       
-      // Budget für alle übersprungenen Jahre hinzufügen
-      if (yearsDiff > 0) {
+      // Budget für das neue Jahr
+      if (newYear > prev.currentYear) {
         newBudget.availableBudgetCurrentPeriod = ANNUAL_BUDGET;
         newBudget.totalSpentCurrentPeriod = 0;
       }
       
-      // Timer-Zeit für Legislatursprung berechnen - KEIN RESET
-      const monthsToAdd = yearsDiff * 12;
-      const timeToAdd = monthsToAdd * SECONDS_PER_MONTH * 1000;
+      // Berechne Tage bis zum 01.01. des Legislaturendes
+      const currentDate = new Date(prev.timeProgress.currentDate);
+      const legislatureEndDate = new Date(newYear, 0, 1);
+      const daysToAdd = Math.ceil((legislatureEndDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
       const newTotalElapsedTime = prev.timeProgress.totalElapsedTime + timeToAdd;
       
       return {
@@ -479,8 +492,8 @@ export const useGameState = () => {
         budget: newBudget,
         timeProgress: {
           ...prev.timeProgress,
-          currentMonth: 1,
-          monthsElapsed: prev.timeProgress.monthsElapsed + monthsToAdd,
+          currentDate: new Date(newYear, 0, 1),
+          daysElapsed: prev.timeProgress.daysElapsed + daysToAdd,
           totalElapsedTime: newTotalElapsedTime
         }
       };
@@ -490,12 +503,13 @@ export const useGameState = () => {
     if (timerStartTime) {
       const currentLegislatureEnd = Math.ceil((gameState.currentYear - 2025 + 1) / 4) * 4 + 2025;
       const newYear = Math.min(2037, currentLegislatureEnd);
-      const yearsDiff = newYear - gameState.currentYear;
-      const monthsToAdd = yearsDiff * 12;
-      const timeToAdd = monthsToAdd * SECONDS_PER_MONTH * 1000;
+      const currentDate = new Date(gameState.timeProgress.currentDate);
+      const legislatureEndDate = new Date(newYear, 0, 1);
+      const daysToAdd = Math.ceil((legislatureEndDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const timeToAdd = daysToAdd * SECONDS_PER_DAY * 1000;
       setTimerStartTime(Date.now() - timeToAdd);
     }
-  }, [gameState.currentYear, timerStartTime]);
+  }, [gameState.currentYear, gameState.timeProgress.currentDate, timerStartTime]);
 
   const applyDecision = useCallback((decision: Decision, selectedOptions: DecisionOption[]) => {
     setGameState(prev => {
@@ -875,10 +889,10 @@ export const useGameState = () => {
         crisisEvents: []
       },
       timeProgress: {
-        monthsElapsed: 0,
+        daysElapsed: 0,
         complexityAccumulated: 0,
         realTimeStart: newStartTime,
-        currentMonth: 1,
+        currentDate: new Date(2025, 0, 1),
         totalElapsedTime: 0,
         isPaused: false
       }
@@ -887,12 +901,15 @@ export const useGameState = () => {
   }, []);
 
   const getCurrentMonth = useCallback(() => {
-    const months = [
-      'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-      'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
-    ];
-    return months[gameState.timeProgress?.currentMonth - 1] || 'Januar';
-  }, [gameState.timeProgress?.currentMonth]);
+    if (!gameState.timeProgress?.currentDate) return '01.01.2025';
+    
+    const date = new Date(gameState.timeProgress.currentDate);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    
+    return `${day}.${month}.${year}`;
+  }, [gameState.timeProgress?.currentDate]);
 
   const getCurrentTimerDisplay = useCallback(() => {
     if (!timerStartTime) return { hours: 0, minutes: 0, seconds: 0 };
@@ -930,7 +947,8 @@ export const useGameState = () => {
   // Prüfe ob Jahr abgeschlossen ist (8 Entscheidungen oder Jahreswechsel)
   const shouldShowYearlyEvaluation = useCallback(() => {
     const currentYear = gameState.currentYear;
-    const currentMonth = gameState.timeProgress?.currentMonth || 1;
+    const currentDate = new Date(gameState.timeProgress?.currentDate || new Date(2025, 0, 1));
+    const isNewYear = currentDate.getMonth() === 0 && currentDate.getDate() === 1;
     const decisionsThisYear = gameState.completedDecisions.filter(d => d.year === currentYear).length;
     
     // Jahresbilanz wenn 8 Entscheidungen getroffen wurden ODER am 01.01. des neuen Jahres
@@ -939,28 +957,29 @@ export const useGameState = () => {
       return !alreadyShown;
     }
     
-    if (currentMonth === 1 && currentYear > 2025) {
+    if (isNewYear && currentYear > 2025) {
       const lastYear = currentYear - 1;
       const alreadyShown = gameState.shownYearlyEvaluations?.includes(lastYear) || false;
       return !alreadyShown;
     }
     
     return false;
-  }, [gameState.completedDecisions, gameState.currentYear, gameState.timeProgress?.currentMonth]);
+  }, [gameState.completedDecisions, gameState.currentYear, gameState.timeProgress?.currentDate]);
 
   const shouldShowLegislatureEvaluation = useCallback(() => {
     const currentYear = gameState.currentYear;
-    const currentMonth = gameState.timeProgress?.currentMonth || 1;
+    const currentDate = new Date(gameState.timeProgress?.currentDate || new Date(2025, 0, 1));
+    const isNewYear = currentDate.getMonth() === 0 && currentDate.getDate() === 1;
     
     // Legislaturbilanz am 01.01. der Jahre 2029, 2033, 2037
-    if (currentMonth === 1 && (currentYear === 2029 || currentYear === 2033 || currentYear === 2037)) {
+    if (isNewYear && (currentYear === 2029 || currentYear === 2033 || currentYear === 2037)) {
       const legislatureEnd = currentYear - 1;
       const alreadyShown = gameState.shownLegislatureEvaluations?.includes(legislatureEnd) || false;
       return !alreadyShown;
     }
     
     return false;
-  }, [gameState.currentYear, gameState.timeProgress?.currentMonth]);
+  }, [gameState.currentYear, gameState.timeProgress?.currentDate]);
 
   const getDecisionsLimitReached = useCallback(() => {
     const decisionsThisYear = gameState.completedDecisions.filter(d => d.year === gameState.currentYear).length;
