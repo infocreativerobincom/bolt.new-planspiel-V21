@@ -127,6 +127,7 @@ export const useGameState = () => {
 
   // Timer-System: Kontinuierlicher Timer - NIEMALS ZURÜCKSETZEN
   const [timerStartTime, setTimerStartTime] = useState<number | null>(null);
+  const [timerSeconds, setTimerSeconds] = useState<number>(0);
 
   // Speichere Spielstand bei jeder Änderung
   useEffect(() => {
@@ -137,17 +138,144 @@ export const useGameState = () => {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     
-    if (!gameState.timeProgress.isPaused && timerStartTime) {
+    if (!gameState.timeProgress.isPaused) {
       interval = setInterval(() => {
-        const currentTime = Date.now();
-        const sessionElapsed = currentTime - timerStartTime;
-        const totalElapsed = gameState.timeProgress.totalElapsedTime + sessionElapsed;
-        
-        const totalDaysElapsed = Math.floor(totalElapsed / (SECONDS_PER_DAY * 1000));
-        const startDate = new Date(2025, 0, 1); // 01.01.2025
-        const currentDate = new Date(startDate);
-        currentDate.setDate(startDate.getDate() + totalDaysElapsed);
-        const currentYear = currentDate.getFullYear();
+        setTimerSeconds(prev => {
+          const newSeconds = prev + 1;
+          
+          // Berechne das neue Datum basierend auf Timer-Sekunden
+          const startDate = new Date(2025, 0, 1); // 01.01.2025
+          const currentDate = new Date(startDate);
+          currentDate.setDate(startDate.getDate() + newSeconds); // Jede Sekunde = 1 Tag
+          const currentYear = currentDate.getFullYear();
+          
+          setGameState(prevState => ({
+            ...prevState,
+            currentYear: Math.min(2037, currentYear),
+            timeProgress: {
+              ...prevState.timeProgress,
+              daysElapsed: newSeconds,
+              currentDate: currentDate,
+              totalElapsedTime: newSeconds * 1000 // Für Kompatibilität
+            }
+          }));
+          
+          return newSeconds;
+        });
+      }, 1000); // Jede Sekunde
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [gameState.timeProgress.isPaused]);
+
+  // Initialisiere Timer-Sekunden aus gespeichertem Spielstand
+  useEffect(() => {
+    if (gameState.timeProgress?.daysElapsed !== undefined) {
+      setTimerSeconds(gameState.timeProgress.daysElapsed);
+    }
+  }, []);
+
+  // Altes Timer-System entfernt - wird nicht mehr verwendet
+  useEffect(() => {
+    // Leerer Effect - das alte Timer-System wurde entfernt
+  }, []);
+
+  const startDecisionTimer = useCallback(() => {
+    setGameState(prev => ({
+      ...prev,
+      timeProgress: {
+        ...prev.timeProgress,
+        isPaused: false
+      }
+    }));
+  }, []);
+
+  const pauseTimer = useCallback(() => {
+    setGameState(prev => ({
+      ...prev,
+      timeProgress: {
+        ...prev.timeProgress,
+        isPaused: true
+      }
+    }));
+  }, []);
+
+  const resumeTimer = useCallback(() => {
+    setGameState(prev => ({
+      ...prev,
+      timeProgress: {
+        ...prev.timeProgress,
+        isPaused: false
+      }
+    }));
+  }, []);
+
+  const getCurrentTimerDisplay = useCallback(() => {
+    const totalSeconds = timerSeconds;
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    
+    return { hours, minutes, seconds };
+  }, [timerSeconds]);
+
+  const advanceToEndOfYear = useCallback(() => {
+    setGameState(prev => {
+      const currentDate = new Date(prev.timeProgress.currentDate);
+      const nextYearStart = new Date(currentDate.getFullYear() + 1, 0, 1);
+      const daysToAdd = Math.ceil((nextYearStart.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const newTimerSeconds = timerSeconds + daysToAdd;
+      
+      setTimerSeconds(newTimerSeconds);
+      
+      return {
+        ...prev,
+        currentYear: Math.min(2037, nextYearStart.getFullYear()),
+        budget: {
+          ...prev.budget,
+          availableBudgetCurrentPeriod: ANNUAL_BUDGET,
+          totalSpentCurrentPeriod: 0
+        },
+        timeProgress: {
+          ...prev.timeProgress,
+          currentDate: nextYearStart,
+          daysElapsed: newTimerSeconds,
+          totalElapsedTime: newTimerSeconds * 1000
+        }
+      };
+    });
+  }, [timerSeconds]);
+
+  const advanceToEndOfLegislature = useCallback(() => {
+    setGameState(prev => {
+      const currentDate = new Date(prev.timeProgress.currentDate);
+      const currentYear = currentDate.getFullYear();
+      const currentLegislatureEnd = Math.ceil((currentYear - 2025 + 1) / 4) * 4 + 2025;
+      const legislatureEndDate = new Date(currentLegislatureEnd, 0, 1);
+      const daysToAdd = Math.ceil((legislatureEndDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      const newTimerSeconds = timerSeconds + daysToAdd;
+      
+      setTimerSeconds(newTimerSeconds);
+      
+      return {
+        ...prev,
+        currentYear: Math.min(2037, currentLegislatureEnd),
+        budget: {
+          ...prev.budget,
+          availableBudgetCurrentPeriod: ANNUAL_BUDGET,
+          totalSpentCurrentPeriod: 0
+        },
+        timeProgress: {
+          ...prev.timeProgress,
+          currentDate: legislatureEndDate,
+          daysElapsed: newTimerSeconds,
+          totalElapsedTime: newTimerSeconds * 1000
+        }
+      };
+    });
+  }, [timerSeconds]);
         
         setGameState(prev => ({
           ...prev,
