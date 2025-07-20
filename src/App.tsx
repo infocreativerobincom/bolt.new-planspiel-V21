@@ -460,14 +460,6 @@ function App() {
                   Verfügbare Entscheidungen
                 </h2>
                 <div className="flex items-center gap-4">
-                  {/* Zeit-Anzeige */}
-                  <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg">
-                    <Clock className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-900">
-                      {getCurrentMonth()}
-                    </span>
-                  </div>
-                  
                   {/* Entscheidungszeit-Timer */}
                   {decisionStartTime && (
                     <div className="flex items-center gap-2 bg-orange-50 px-3 py-2 rounded-lg">
